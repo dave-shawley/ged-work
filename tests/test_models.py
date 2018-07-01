@@ -43,9 +43,35 @@ class RecordTests(unittest.TestCase):
         self.assertIs(parent.children[0], record)
 
     def test_that_tag_is_parsed_from_line_data(self):
+        # 0 NAME Joe /SCHMOE/
         tag, _, data = str(uuid.uuid4()).upper().partition('-')
         line_data = '{} {}'.format(tag, data)
+
         record = models.Record(line_data, record_level=0)
+        self.assertIsNone(record.pointer)
         self.assertEqual(record.tag, tag)
         self.assertEqual(record.data, data)
+        self.assertEqual(record.line_data, line_data)
+
+    def test_that_pointer_is_parsed_if_present(self):
+        # 0 @I14938282@ INDI ...
+        tokens = str(uuid.uuid4()).upper().split('-')
+        line_data = '@{}@ {} {}'.format(tokens[0], tokens[1], tokens[2])
+
+        record = models.Record(line_data, record_level=0)
+        self.assertEqual(record.pointer, '@{}@'.format(tokens[0]))
+        self.assertEqual(record.tag, tokens[1])
+        self.assertEqual(record.data, tokens[2])
+        self.assertEqual(record.line_data, line_data)
+
+    def test_that_reference_is_parsed_if_present(self):
+        # 2 SOUR ... @S68885317@
+        tokens = str(uuid.uuid4()).upper().split('-')
+        line_data = '{} {} @{}@'.format(tokens[0], tokens[1], tokens[2])
+
+        record = models.Record(line_data, record_level=0)
+        self.assertIsNone(record.pointer)
+        self.assertEqual(record.tag, tokens[0])
+        self.assertEqual(record.reference, '@{}@'.format(tokens[2]))
+        self.assertEqual(record.data, tokens[1])
         self.assertEqual(record.line_data, line_data)

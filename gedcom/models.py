@@ -43,7 +43,9 @@ class Record(object):
         self.children = []
         self.parent = None
         self.record_level = record_level
+        self.pointer = None
         self.tag = None
+        self.reference = None
         self.data = None
 
         self.line_data = line_data
@@ -53,11 +55,32 @@ class Record(object):
     @property
     def line_data(self):
         """Content of the GEDCOM line following the record level."""
-        return '{} {}'.format(self.tag, self.data)
+        parts = []
+        if self.pointer:
+            parts.append(self.pointer)
+        parts.extend([self.tag, self.data])
+        if self.reference:
+            parts.append(self.reference)
+        return ' '.join(parts)
 
     @line_data.setter
     def line_data(self, line_data):
-        self.tag, space, self.data = line_data.partition(' ')
+        self.pointer, self.reference = None, None
+        self.tag, self.data = None, None
+
+        remaining = line_data.strip()
+        if remaining.startswith('@'):
+            self.pointer, space, remaining = remaining.partition(' ')
+
+        self.tag, space, remaining = remaining.partition(' ')
+
+        remaining, space, maybe_ref = remaining.rpartition(' ')
+        if maybe_ref.startswith('@') and maybe_ref.endswith('@'):
+            self.reference = maybe_ref
+        elif maybe_ref:
+            remaining = ' '.join([remaining, maybe_ref])
+
+        self.data = remaining.strip()
 
     def add_child(self, newborn):
         """
