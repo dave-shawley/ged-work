@@ -55,7 +55,9 @@ class Record(object):
         parts = []
         if self.pointer:
             parts.append(self.pointer)
-        parts.extend([self.tag, self.data])
+        parts.append(self.tag)
+        if self.data:
+            parts.append(self.data)
         if self.reference:
             parts.append(self.reference)
         return ' '.join(parts)
@@ -98,6 +100,8 @@ class Record(object):
         Make `newborn` a new child of `self`.
 
         :param Record newborn: record to re-parent.
+        :returns: `newborn`
+        :rtype: Record
 
         This method sets the parent of `newborn` to `self`, appends `newborn`
         to :attr:`children`, and sets :attr:`.record_level` to the parent's
@@ -107,3 +111,10 @@ class Record(object):
         newborn.parent = self
         self.children.append(newborn)
         newborn.record_level = self.record_level + 1
+        return newborn
+
+    def as_string(self):
+        """Format the record and children as a GEDCOM-ready string."""
+        lines = ['{0.record_level} {0.line_data}\n'.format(self)]
+        lines.extend(child.as_string() for child in self.children)
+        return ''.join(lines)

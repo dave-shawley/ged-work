@@ -26,8 +26,8 @@ class RecordTests(unittest.TestCase):
 
     def test_that_parent_overrides_record_level(self):
         parent = models.Record(record_level=0)
-        record = models.Record(record_level=random.randint(10, 20),
-                               parent=parent)
+        record = models.Record(
+            record_level=random.randint(10, 20), parent=parent)
         self.assertEqual(record.record_level, parent.record_level + 1)
 
     def test_that_creating_record_adds_new_child(self):
@@ -46,18 +46,23 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(record.tag, tag)
         self.assertEqual(record.data, data)
         self.assertEqual(record.line_data, line_data)
+        self.assertEqual('{} {} {}\n'.format(record.record_level, tag, data),
+                         record.as_string())
 
     def test_that_pointer_is_parsed_if_present(self):
         # 0 @I14938282@ INDI ...
         tokens = str(uuid.uuid4()).upper().split('-')
-        line_data = '@{}@ {} {}'.format(tokens[0], tokens[1], tokens[2])
+        line_data = '@{}@ {}'.format(tokens[0], tokens[1])
 
         record = models.Record.from_line('0 {}'.format(line_data))
         self.assertEqual(record.record_level, 0)
         self.assertEqual(record.pointer, '@{}@'.format(tokens[0]))
         self.assertEqual(record.tag, tokens[1])
-        self.assertEqual(record.data, tokens[2])
+        self.assertEqual(record.data, '')
         self.assertEqual(record.line_data, line_data)
+        self.assertEqual(
+            '{} @{}@ {}\n'.format(record.record_level, tokens[0], tokens[1]),
+            record.as_string())
 
     def test_that_reference_is_parsed_if_present(self):
         # 2 SOUR ... @S68885317@
@@ -71,3 +76,19 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(record.reference, '@{}@'.format(tokens[2]))
         self.assertEqual(record.data, tokens[1])
         self.assertEqual(record.line_data, line_data)
+        self.assertEqual(
+            '{} {} {} @{}@\n'.format(record.record_level, tokens[0], tokens[1],
+                                     tokens[2]), record.as_string())
+
+    def test_that_children_are_formatted_recursively(self):
+        indi = models.Record.from_line('0 @I14938282@ INDI')
+        name = indi.add_child(models.Record.from_line('1 NAME Andrew /Bear/'))
+        name.add_child(models.Record.from_line('2 GIVN Andrew'))
+        name.add_child(models.Record.from_line('2 SURN Bear'))
+        self.assertEqual(
+            '0 @I14938282@ INDI\n'
+            '1 NAME Andrew /Bear/\n'
+            '2 GIVN Andrew\n'
+            '2 SURN Bear\n',
+            indi.as_string(),
+        )
