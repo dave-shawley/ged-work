@@ -47,7 +47,8 @@ class RecordTests(unittest.TestCase):
         tag, _, data = str(uuid.uuid4()).upper().partition('-')
         line_data = '{} {}'.format(tag, data)
 
-        record = models.Record(line_data, record_level=0)
+        record = models.Record.from_line('0 {}'.format(line_data))
+        self.assertEqual(record.record_level, 0)
         self.assertIsNone(record.pointer)
         self.assertEqual(record.tag, tag)
         self.assertEqual(record.data, data)
@@ -58,7 +59,8 @@ class RecordTests(unittest.TestCase):
         tokens = str(uuid.uuid4()).upper().split('-')
         line_data = '@{}@ {} {}'.format(tokens[0], tokens[1], tokens[2])
 
-        record = models.Record(line_data, record_level=0)
+        record = models.Record.from_line('0 {}'.format(line_data))
+        self.assertEqual(record.record_level, 0)
         self.assertEqual(record.pointer, '@{}@'.format(tokens[0]))
         self.assertEqual(record.tag, tokens[1])
         self.assertEqual(record.data, tokens[2])
@@ -69,7 +71,8 @@ class RecordTests(unittest.TestCase):
         tokens = str(uuid.uuid4()).upper().split('-')
         line_data = '{} {} @{}@'.format(tokens[0], tokens[1], tokens[2])
 
-        record = models.Record(line_data, record_level=0)
+        record = models.Record.from_line('0 {}'.format(line_data))
+        self.assertEqual(record.record_level, 0)
         self.assertIsNone(record.pointer)
         self.assertEqual(record.tag, tokens[0])
         self.assertEqual(record.reference, '@{}@'.format(tokens[2]))

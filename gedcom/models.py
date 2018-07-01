@@ -63,6 +63,19 @@ class Record(object):
             parts.append(self.reference)
         return ' '.join(parts)
 
+    @classmethod
+    def from_line(cls, raw_line):
+        """
+        Create a record from a GEDCOM line.
+
+        :param str raw_line: raw GEDCOM line with or without line terminator
+        :returns: a parsed record
+        :rtype: Record
+
+        """
+        record_level, space, line_data = raw_line.strip().partition(' ')
+        return cls(line_data, record_level=int(record_level))
+
     @line_data.setter
     def line_data(self, line_data):
         self.pointer, self.reference = None, None
