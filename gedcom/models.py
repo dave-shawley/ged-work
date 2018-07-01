@@ -2,8 +2,6 @@ class Record(object):
     """
     A GEDCOM record.
 
-    :param str line_data: content from the GEDCOM file line following
-        the record level.
     :keyword int record_level: depth of the GEDCOM record.  This is
         zero at the root and increases by one for each additional
         level.
@@ -36,7 +34,7 @@ class Record(object):
 
     """
 
-    def __init__(self, line_data, *, record_level=None, parent=None):
+    def __init__(self, *, record_level=None, parent=None):
         if record_level is None and parent is None:
             raise RuntimeError('either parent or record_level is required')
 
@@ -48,7 +46,6 @@ class Record(object):
         self.reference = None
         self.data = None
 
-        self.line_data = line_data
         if parent is not None:
             parent.add_child(self)
 
@@ -64,36 +61,37 @@ class Record(object):
         return ' '.join(parts)
 
     @classmethod
-    def from_line(cls, raw_line):
+    def from_line(cls, raw_line, parent=None):
         """
         Create a record from a GEDCOM line.
 
         :param str raw_line: raw GEDCOM line with or without line terminator
+        :param Record parent: optional parent of the new node
         :returns: a parsed record
         :rtype: Record
 
         """
         record_level, space, line_data = raw_line.strip().partition(' ')
-        return cls(line_data, record_level=int(record_level))
+        obj = cls(record_level=int(record_level), parent=parent)
 
-    @line_data.setter
-    def line_data(self, line_data):
-        self.pointer, self.reference = None, None
-        self.tag, self.data = None, None
+        obj.pointer, obj.reference = None, None
+        obj.tag, obj.data = None, None
 
         remaining = line_data.strip()
         if remaining.startswith('@'):
-            self.pointer, space, remaining = remaining.partition(' ')
+            obj.pointer, space, remaining = remaining.partition(' ')
 
-        self.tag, space, remaining = remaining.partition(' ')
+        obj.tag, space, remaining = remaining.partition(' ')
 
         remaining, space, maybe_ref = remaining.rpartition(' ')
         if maybe_ref.startswith('@') and maybe_ref.endswith('@'):
-            self.reference = maybe_ref
+            obj.reference = maybe_ref
         elif maybe_ref:
             remaining = ' '.join([remaining, maybe_ref])
 
-        self.data = remaining.strip()
+        obj.data = remaining.strip()
+
+        return obj
 
     def add_child(self, newborn):
         """
