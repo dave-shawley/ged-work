@@ -88,6 +88,27 @@ class RecordTests(unittest.TestCase):
                                      tokens[2]), record.as_string())
         self.assertEqual(1, record.node_count)
 
+
+class TreeRelatedTests(unittest.TestCase):
+    def test_that_add_child_sets_record_level(self):
+        root = models.Record.from_line('0 PARENT')
+        child = models.Record.from_line('2 CHILD')
+        self.assertEqual(2, child.record_level)
+        root.add_child(child)
+        self.assertEqual(1, child.record_level)
+
+    def test_that_add_child_modifies_parents_list_of_children(self):
+        root = models.Record.from_line('0 PARENT')
+        child = models.Record.from_line('1 CHILD')
+        root.add_child(child)
+        self.assertListEqual([child], root.children)
+
+    def test_that_add_child_returns_child(self):
+        root = models.Record.from_line('0 PARENT')
+        child = models.Record.from_line('1 CHILD')
+        result = root.add_child(child)
+        self.assertIs(result, child)
+
     def test_that_children_are_formatted_recursively(self):
         indi = models.Record.from_line('0 @I14938282@ INDI')
         name = indi.add_child(models.Record.from_line('1 NAME Andrew /Bear/'))
