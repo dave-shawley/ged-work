@@ -1,8 +1,9 @@
+import io
 import random
 import unittest.mock
 import uuid
 
-from gedcom import models
+from gedcom import api, models
 
 
 class RecordTests(unittest.TestCase):
@@ -123,3 +124,61 @@ class TreeRelatedTests(unittest.TestCase):
         )
         self.assertEqual(4, indi.node_count)
         self.assertEqual(3, name.node_count)
+
+    def test_find_first_child(self):
+        root = models.Record.from_line('0 PARENT')
+        first_child = root.add_child(models.Record.from_line('1 FIRST CHILD'))
+
+        self.assertIs(root.find_first_child('FIRST'), first_child)
+        self.assertIsNone(root.find_first_child('SECOND'))
+
+    def test_gen_children_by_tag(self):
+        line_data = [
+            '1 CHILD FIRST\n',
+            '1 CHILD SECOND\n',
+            '1 CHILD THIRD\n',
+        ]
+        root = models.Record.from_line('0 PARENT')
+        for line in line_data:
+            root.add_child(models.Record.from_line(line))
+        root.add_child(models.Record.from_line('1 NOTCHILD\n'))
+
+        gen = root.gen_children_by_tag('CHILD')
+        for expected in line_data:
+            self.assertEqual(next(gen).as_string(), expected)
+        with self.assertRaises(StopIteration):
+            next(gen)
+
+    def test_find_descendants(self):
+        lines = [
+            '0 @P@ PARENT',
+            '1 @P1@ CHILD',
+            '1 @P2@ CHILD',
+            '2 @P21@ CHILD',
+            '2 @P22@ CHILD',
+            '1 @P3@ CHILD',
+            '1 @P4@ CHILD',
+            '2 @P41@ CHILD',
+            '3 @P411@ CHILD',
+            '2 @P42@ CHILD',
+        ]
+        buf = io.BytesIO('\n'.join(lines).encode('utf-8'))
+        db = api.parse(buf)
+        self.assertEqual(1, len(db.root_records))
+
+        root = db.root_records[0]
+        self.assertListEqual(root.find_descendants('NOTTHERE'), [])
+        self.assertListEqual(
+            [record.pointer for record in root.find_descendants('CHILD')],
+            [
+                '@P1@',
+                '@P2@',
+                '@P3@',
+                '@P4@',
+                '@P21@',
+                '@P22@',
+                '@P41@',
+                '@P42@',
+                '@P411@',
+            ],
+        )

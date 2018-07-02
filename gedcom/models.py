@@ -123,6 +123,50 @@ class Record(object):
         newborn.record_level = self.record_level + 1
         return newborn
 
+    def find_first_child(self, tag):
+        """
+        Find the first child tagged as `tag`.
+
+        :param str tag: GEDCOM tag to search for
+        :return: a :class:`.Record` instance or :data:`None`
+        :rtype: Record
+
+        """
+        for child in self.children:
+            if child.tag == tag:
+                return child
+
+    def gen_children_by_tag(self, tag):
+        """
+        Generate children tagged by `tag` in order.
+
+        :param str tag: GEDCOM tag to search for
+        :return: a generator that generates :class:`.Record` instances
+            in order
+
+        """
+        for child in self.children:
+            if child.tag == tag:
+                yield child
+
+    def find_descendants(self, tag):
+        """
+        Find all descendants tagged with `tag`.
+
+        :param str tag: GEDCOM tag to search for
+        :return: a possibly empty :class:`list` of :class:`.Record` instances
+        :rtype: list
+
+        """
+        matched = []
+        queue = self.children[:]
+        while queue:
+            child = queue.pop(0)
+            if child.tag == tag:
+                matched.append(child)
+            queue.extend(child.children)
+        return matched
+
     def as_string(self):
         """Format the record and children as a GEDCOM-ready string."""
         lines = ['{0.record_level} {0.line_data}\n'.format(self)]
