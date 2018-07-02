@@ -35,6 +35,11 @@ class RecordTests(unittest.TestCase):
         record = models.Record(parent=parent)
         self.assertIs(parent.children[0], record)
 
+    def test_that_pointer_cannot_be_modified(self):
+        record = models.Record.from_line('0 PARENT')
+        with self.assertRaises(AttributeError):
+            record.pointer = '@P1@'
+
     def test_that_tag_is_parsed_from_line_data(self):
         # 0 NAME Joe /SCHMOE/
         tag, _, data = str(uuid.uuid4()).upper().partition('-')

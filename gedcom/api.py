@@ -16,6 +16,8 @@ def parse(file_object):
 
     for line_number, line_data in enumerate(file_object):
         record = models.Record.from_line(line_data.decode('utf-8'))
+        db.register_record(record)
+
         if record.record_level == 0:
             if parse_stack:
                 db.add_root_record(parse_stack[0])

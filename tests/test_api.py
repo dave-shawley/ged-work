@@ -55,3 +55,25 @@ class ParseTests(unittest.TestCase):
         db = api.parse(io.BytesIO(string_data.encode('utf-8')))
         self.assertEqual(3, len(db.root_records))
         self.assertEqual(21, db.record_count)
+
+    def test_that_pointers_are_registered_in_db(self):
+        string_data = '\n'.join([
+            '0 @I14938282@ INDI',
+            '1 NAME Andrew /Bear/',
+            '2 GIVN Andrew',
+            '2 SURN Bear',
+            '1 SOUR @S68885317@',
+            '2 PAGE 17',
+            '0 @S68885317@ SOUR',
+            '1 TITL Three Bears Of Earl Township, Lancaster County, '
+            'Pennsylvania, And Other Early Bears',
+            '1 REPO @R41744368@',
+            '0 @R41744368@ REPO',
+            '1 NAME Dave Shawley',
+            '1 ADDR daveshawley@gmail.com',
+        ])
+
+        db = api.parse(io.BytesIO(string_data.encode('utf-8')))
+        self.assertIs(db.find_pointer('@I14938282@'), db.root_records[0])
+        self.assertIs(db.find_pointer('@S68885317@'), db.root_records[1])
+        self.assertIs(db.find_pointer('@R41744368@'), db.root_records[2])

@@ -1,3 +1,6 @@
+import weakref
+
+
 class Record(object):
     """
     A GEDCOM record.
@@ -41,7 +44,7 @@ class Record(object):
         self.children = []
         self.parent = None
         self.record_level = record_level
-        self.pointer = None
+        self._pointer = None
         self.tag = None
         self.reference = None
         self.data = None
@@ -67,6 +70,11 @@ class Record(object):
         """The number of nodes rooted at this record."""
         return 1 + sum(child.node_count for child in self.children)
 
+    @property
+    def pointer(self):
+        """Possibly empty GEDCOM pointer ID of this record."""
+        return self._pointer
+
     @classmethod
     def from_line(cls, raw_line, parent=None):
         """
@@ -81,12 +89,9 @@ class Record(object):
         record_level, space, line_data = raw_line.strip().partition(' ')
         obj = cls(record_level=int(record_level), parent=parent)
 
-        obj.pointer, obj.reference = None, None
-        obj.tag, obj.data = None, None
-
         remaining = line_data.strip()
         if remaining.startswith('@'):
-            obj.pointer, space, remaining = remaining.partition(' ')
+            obj._pointer, space, remaining = remaining.partition(' ')
 
         obj.tag, space, remaining = remaining.partition(' ')
 
@@ -137,6 +142,7 @@ class Database(object):
     def __init__(self):
         super().__init__()
         self.root_records = []
+        self._pointers = weakref.WeakValueDictionary()
 
     def add_root_record(self, record):
         """
@@ -151,3 +157,24 @@ class Database(object):
     def record_count(self):
         """Total number of records in the database."""
         return sum(r.node_count for r in self.root_records)
+
+    def find_pointer(self, pointer):
+        """
+        Find a node by it's GEDCOM pointer.
+
+        :param str pointer: GEDCOM pointer to look up
+        :return: the :class:`.Record` or :data:`None`
+        :rtype: Record
+
+        """
+        return self._pointers.get(pointer, None)
+
+    def register_record(self, record):
+        """
+        Register `record` in appropriate lookup maps.
+
+        :param Record record: the record to process
+
+        """
+        if record.pointer:
+            self._pointers[record.pointer] = record
