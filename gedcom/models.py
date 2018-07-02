@@ -222,3 +222,18 @@ class Database(object):
         """
         if record.pointer:
             self._pointers[record.pointer] = record
+
+    def find_records(self, tag):
+        """
+        Returns all records tagged with `tag`.
+
+        :param str tag: GEDCOM tag to search for
+        :return: a possibly empty :class:`list` of :class:`.Record` instances
+
+        """
+        matched = []
+        for record in self.root_records:
+            if record.tag == tag:
+                matched.append(record)
+            matched.extend(record.find_descendants(tag))
+        return matched

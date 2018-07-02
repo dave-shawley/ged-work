@@ -182,3 +182,40 @@ class TreeRelatedTests(unittest.TestCase):
                 '@P411@',
             ],
         )
+
+    def test_find_records(self):
+        lines = [
+            '0 @P@ PARENT',
+            '1 @P1@ CHILD',
+            '1 @P2@ CHILD',
+            '2 @P21@ CHILD',
+            '2 @P22@ CHILD',
+            '0 @Q@ PARENT',
+            '1 @Q1@ CHILD',
+            '1 @Q2@ CHILD',
+            '2 @Q21@ CHILD',
+            '3 @Q211@ CHILD',
+            '2 @Q22@ CHILD',
+        ]
+        buf = io.BytesIO('\n'.join(lines).encode('utf-8'))
+        db = api.parse(buf)
+
+        self.assertListEqual(
+            [record.pointer for record in db.find_records('CHILD')],
+            [
+                '@P1@',
+                '@P2@',
+                '@P21@',
+                '@P22@',
+                '@Q1@',
+                '@Q2@',
+                '@Q21@',
+                '@Q22@',
+                '@Q211@',
+            ],
+        )
+
+        self.assertListEqual(
+            [record.pointer for record in db.find_records('PARENT')],
+            ['@P@', '@Q@'],
+        )
