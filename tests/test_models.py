@@ -48,6 +48,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(record.line_data, line_data)
         self.assertEqual('{} {} {}\n'.format(record.record_level, tag, data),
                          record.as_string())
+        self.assertEqual(1, record.node_count)
 
     def test_that_pointer_is_parsed_if_present(self):
         # 0 @I14938282@ INDI ...
@@ -63,6 +64,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(
             '{} @{}@ {}\n'.format(record.record_level, tokens[0], tokens[1]),
             record.as_string())
+        self.assertEqual(1, record.node_count)
 
     def test_that_reference_is_parsed_if_present(self):
         # 2 SOUR ... @S68885317@
@@ -79,6 +81,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(
             '{} {} {} @{}@\n'.format(record.record_level, tokens[0], tokens[1],
                                      tokens[2]), record.as_string())
+        self.assertEqual(1, record.node_count)
 
     def test_that_children_are_formatted_recursively(self):
         indi = models.Record.from_line('0 @I14938282@ INDI')
@@ -92,3 +95,5 @@ class RecordTests(unittest.TestCase):
             '2 SURN Bear\n',
             indi.as_string(),
         )
+        self.assertEqual(4, indi.node_count)
+        self.assertEqual(3, name.node_count)

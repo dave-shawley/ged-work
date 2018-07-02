@@ -62,6 +62,11 @@ class Record(object):
             parts.append(self.reference)
         return ' '.join(parts)
 
+    @property
+    def node_count(self):
+        """The number of nodes rooted at this record."""
+        return 1 + sum(child.node_count for child in self.children)
+
     @classmethod
     def from_line(cls, raw_line, parent=None):
         """
@@ -118,3 +123,31 @@ class Record(object):
         lines = ['{0.record_level} {0.line_data}\n'.format(self)]
         lines.extend(child.as_string() for child in self.children)
         return ''.join(lines)
+
+
+class Database(object):
+    """
+    Represents a database of parsed GEDCOM records.
+
+    You should not create instances of this class yourself.  Call
+    :func:`gedcom.api.parse` to create an instance instead.
+
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.root_records = []
+
+    def add_root_record(self, record):
+        """
+        Add a new root record.
+
+        :param Record record: the record to add.
+
+        """
+        self.root_records.append(record)
+
+    @property
+    def record_count(self):
+        """Total number of records in the database."""
+        return sum(r.node_count for r in self.root_records)
