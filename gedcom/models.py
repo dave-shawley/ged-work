@@ -12,7 +12,7 @@ class Record(object):
 
     When creating a new record, either the `parent` or the `record_level`
     is required.  If both are provided, then the `record_level` is ignored
-    in deferrence to `parent.record_level`.  If neither are specified, then
+    in deference to `parent.record_level`.  If neither are specified, then
     a :class:`RuntimeError` will be raised.
 
     .. attribute:: children
@@ -178,8 +178,8 @@ class Database(object):
     """
     Represents a database of parsed GEDCOM records.
 
-    You should not create instances of this class yourself.  Call
-    :func:`gedcom.api.parse` to create an instance instead.
+    You should not create instances of this class yourself.
+    Call :func:`gedcom.api.parse` to create an instance instead.
 
     """
 
@@ -228,7 +228,8 @@ class Database(object):
         Returns all records tagged with `tag`.
 
         :param str tag: GEDCOM tag to search for
-        :return: a possibly empty :class:`list` of :class:`.Record` instances
+        :return: a possibly empty :class:`list` of
+            :class:`.Record` instances
 
         """
         matched = []
@@ -242,7 +243,7 @@ class Database(object):
         """
         Write the records out as a GEDCOM file.
 
-        :param file_object: *filelike* object to write to
+        :param file_object: *file-like* object to write to
 
         """
         for record in self.root_records:
