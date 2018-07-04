@@ -219,3 +219,49 @@ class TreeRelatedTests(unittest.TestCase):
             [record.pointer for record in db.find_records('PARENT')],
             ['@P@', '@Q@'],
         )
+
+
+class DatabaseTests(unittest.TestCase):
+    def test_that_write_processes_all_records(self):
+        lines = [
+            '0 @F59501820@ FAM',
+            '1 HUSB @I49205438@',
+            '1 WIFE @I72999056@',
+            '1 CHIL @I17651300@',
+            '2 PEDI birth',
+            '1 CHIL @I30378916@',
+            '2 PEDI birth',
+            '1 CHIL @I29261188@',
+            '2 PEDI birth',
+            '1 CHIL @I30782740@',
+            '2 PEDI birth',
+            '1 CHIL @I32365563@',
+            '2 PEDI birth',
+            '1 CHIL @I22387942@',
+            '2 PEDI birth',
+            '1 CHIL @I33483194@',
+            '2 PEDI birth',
+            '1 CHIL @I14938282@',
+            '2 PEDI birth',
+            '1 CHIL @I79238897@',
+            '2 PEDI birth',
+        ]
+        buf = io.BytesIO('\n'.join(lines).encode('utf-8'))
+
+        record_from_line = models.Record.from_line
+        as_string = unittest.mock.Mock(side_effect=models.Record.as_string)
+        file_object = io.BytesIO()
+
+        def patched_from_line(*args, **kwargs):
+            obj = record_from_line(*args, **kwargs)
+            obj.as_string = lambda: as_string(obj)
+            return obj
+
+        with unittest.mock.patch('gedcom.api.models.Record') as record_cls:
+            record_cls.from_line.side_effect = patched_from_line
+            db = api.parse(buf)
+            db.write(file_object)
+
+        self.assertEqual(record_cls.from_line.call_count, len(lines))
+        self.assertEqual(as_string.call_count, len(lines))
+        self.assertEqual(buf.getvalue(), '\n'.join(lines).encode('utf-8'))

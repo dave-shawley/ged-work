@@ -237,3 +237,13 @@ class Database(object):
                 matched.append(record)
             matched.extend(record.find_descendants(tag))
         return matched
+
+    def write(self, file_object):
+        """
+        Write the records out as a GEDCOM file.
+
+        :param file_object: *filelike* object to write to
+
+        """
+        for record in self.root_records:
+            file_object.write(record.as_string().encode('utf-8'))
