@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+#
+
+import collections
+import contextlib
+import logging
+import sys
+import time
+
+import nameparser.config
+import yaml
+
+
+nameparser.config.CONSTANTS.string_format = '{first} {middle} /{last}/'
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+
+class Person:
+    _PERSON_UID = int(time.time())
+
+    def __init__(self, **kwargs):
+        self.lineage_id = kwargs.get('lineage_id', None)
+        self.uid = self.getuid()
+        self._name = None
+        self.gender = kwargs.get('gender', None)
+        self.page_number = kwargs.get('page', None)
+        self.families = []
+        self.events = kwargs.get('events', [])
+        self.name = kwargs.get('name', None)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, str_value):
+        if not str_value:
+            self._name = None
+            return
+
+        self._name = nameparser.HumanName(str_value)
+        if self._name.first == '_':
+            self._name.first = None
+        if self._name.last == '_':
+            self._name.last = None
+
+    @classmethod
+    def getuid(cls):
+        uid = 'I{}'.format(cls._PERSON_UID)
+        cls._PERSON_UID += 1
+        return uid
+
+
+class Family:
+    _FAMILY_UID = int(time.time())
+
+    def __init__(self):
+        self.uid = self.getuid()
+        self.parents = []
+        self.children = []
+
+    @classmethod
+    def getuid(cls):
+        uid = 'F{}'.format(cls._FAMILY_UID)
+        cls._FAMILY_UID += 1
+        return uid
+
+    def __repr__(self):
+        return 'Family(uid={},parents={},children={})'.format(
+            self.uid, repr(self.parents), repr(self.children))
+
+
+class ObjectWriter:
+    def __init__(self, output):
+        self.output = output
+        self.record_level = 0
+
+    def write_line(self, *tokens, adjust_level=None):
+        record_level = self.record_level
+        if adjust_level:
+            record_level += adjust_level
+        self.output.write('{} {}\n'.format(
+            record_level, ' '.join(str(t) for t in tokens)))
+
+    @contextlib.contextmanager
+    def to_child(self):
+        self.record_level += 1
+        try:
+            yield
+        finally:
+            self.record_level -= 1
+
+
+class GedcomWriter:
+    def __init__(self, output):
+        self.writer = ObjectWriter(output)
+        self._id_seed = int(time.time())
+        self.notes = {}
+        self.places = {}
+        self._place_keys = {}
+
+    def write_line(self, tag, *data, xref=None, pointer=None,
+                   skip_empty=False, **kwargs):
+        tokens = []
+        if xref:
+            tokens.append('@{}@'.format(xref))
+        tokens.append(tag)
+        tokens.extend(str(d) for d in data)
+        if skip_empty:
+            tokens = [t for t in tokens if t]
+        if pointer:
+            tokens.append('@{}@'.format(pointer))
+        if skip_empty and len(tokens) < 2:  # skip if only a tag
+            return
+        self.writer.write_line(*tokens, **kwargs)
+
+    def write_header(self):
+        self.write_line('HEAD')
+        with self.writer.to_child():
+            self.write_line('SOUR', 'GedWork')
+            self.write_line('NAME', 'GedWork', adjust_level=1)
+            self.write_line('VERS', '0.0.0', adjust_level=1)
+            self.write_line('CHAR', 'UTF-8')
+            self.write_line('GEDC')
+            self.write_line('VERS', '5.5.1', adjust_level=1)
+            self.write_line('FORM', 'LINEAGE-LINKED', adjust_level=1)
+            self.write_line('PLAC')
+            self.write_line('FORM', 'Place,County,State,Country',
+                            adjust_level=1)
+
+    def write_individual(self, person, **kwargs):
+        def insert_source(adjust_level=0):
+            self.write_line('SOUR', pointer='S68885317', adjust_level=adjust_level)
+            if person.page_number:
+                self.write_line('PAGE', person.page_number, adjust_level=adjust_level + 1)
+
+        child_of = kwargs.pop('child_of', [])
+        parent_of = kwargs.pop('parent_of', [])
+
+        self.write_line('INDI', xref=person.uid)
+        with self.writer.to_child():
+            self.write_name(person.name)
+            self.write_line('SEX', person.gender)
+            insert_source()
+            if person.lineage_id:
+                self.write_line('RFN', person.lineage_id)
+                note_id = 'N{}'.format(self._id_seed + len(self.notes))
+                self.notes[note_id] = ' '.join([
+                    'Listed as', person.lineage_id, 'in "Three Bears of Earl',
+                    'Township, Lancaster County, Pennsylvania, And Other',
+                    'Early Bears'])
+                self.write_line('NOTE', pointer=note_id)
+
+            for event in person.events:
+                if 'birth' in event:
+                    self.write_line('BIRT')
+                    with self.writer.to_child():
+                        self.write_line('DATE', event['birth'])
+                        insert_source()
+                elif 'death' in event:
+                    self.writer.write_line('DEAT')
+                    with self.writer.to_child():
+                        self.write_line('DATE', event['death'])
+                        insert_source()
+                elif 'residence' in event:
+                    self.writer.write_line('RESI')
+                    with self.writer.to_child():
+                        self.write_place(event['residence'])
+                        insert_source()
+                elif 'occupation' in event:
+                    self.writer.write_line('OCCU', event['occupation'])
+                    insert_source(adjust_level=1)
+                elif 'burial' in event:
+                    self.writer.write_line('BURI')
+                    with self.writer.to_child():
+                        self.write_place(event['burial'])
+                        insert_source()
+                else:
+                    logging.warning('unknown event: %r', event)
+
+            for family_id in parent_of:
+                self.write_line('FAMS', pointer=family_id)
+            for family_id in child_of:
+                self.write_line('FAMC', pointer=family_id)
+
+    def write_family(self, family):
+        self.write_line('FAM', xref=family.uid)
+        with self.writer.to_child():
+            for person in family.parents:
+                if person.gender == 'M':
+                    self.write_line('HUSB', pointer=person.uid)
+                else:
+                    self.write_line('WIFE', pointer=person.uid)
+            for person in family.children:
+                self.write_line('CHIL', pointer=person.uid)
+                self.write_line('PEDI', 'birth', adjust_level=1)
+
+    def write_item(self, uid, tag, **attributes):
+        self.write_line(tag, xref=uid)
+        with self.writer.to_child():
+            for name, value in attributes.items():
+                self.write_line(name.upper(), value)
+
+    def write_name(self, name):
+        self.write_line('NAME', name)
+        with self.writer.to_child():
+            self.write_line('GIVN', name.first, skip_empty=True)
+            self.write_line('SURN', name.last, skip_empty=True)
+            self.write_line('NPFX', name.title, skip_empty=True)
+            self.write_line('SECG', name.middle, skip_empty=True)
+            self.write_line('NICK', name.nickname, skip_empty=True)
+
+    def write_place(self, place_details):
+        formatted = ','.join(
+            place_details.get(k, '')
+            for k in ('place', 'county', 'state', 'country'))
+        self.write_line('PLAC', formatted)
+        try:
+            coords = place_details['coordinates']
+            with self.writer.to_child():
+                self.write_line('MAP')
+                with self.writer.to_child():
+                    self.write_line('LONG', coords['longitude'])
+                    self.write_line('LATI', coords['latitude'])
+        except KeyError:
+            pass
+
+    def write_generated_items(self):
+        self.write_notes()
+
+    def write_notes(self):
+        for note_uid, note_text in self.notes.items():
+            self.write_line('NOTE', xref=note_uid)
+            self.write_line('CONT', note_text, adjust_level=1)
+
+
+def convert_coords(longitude, latitude):
+    coords = {'longitude': [], 'latitude': []}
+    divisors = [60.0, 3600.0]
+    e_or_w, longitude = longitude[0], float(longitude[1:])
+    coords['longitude'].append(int(longitude))
+    longitude = longitude - int(longitude)
+    for div in divisors:
+        coords['longitude'].append(int(longitude * div))
+        longitude -= float(coords['longitude'][-1]) / div
+    n_or_s, latitude = latitude[0], float(latitude[1:])
+    coords['latitude'].append(int(latitude))
+    latitude = latitude - int(latitude)
+    for div in divisors:
+        coords['latitude'].append(int(latitude * div))
+        latitude -= float(coords['latitude'][-1]) / div
+    return coords
+
+
+def generate_child_index(base_lineage_id):
+    child_index = 1
+    while child_index < 10:
+        yield base_lineage_id + str(child_index)
+        child_index += 1
+    yield base_lineage_id + '0'
+    while True:
+        yield base_lineage_id + chr(ord('A') + child_index - 10)
+        child_index += 1
+
+
+class Parser:
+    def __init__(self):
+        self.current_page = None
+        self.individuals = {}
+        self.families = {}
+
+    def process(self, outline):
+        for info in outline:
+           self.process_person(info, info['id'])
+        logging.info('processed %d people', len(self.individuals))
+        logging.info('processed %d families', len(self.families))
+
+    def process_person(self, info, lineage_id):
+        self.current_page = info.get('page', self.current_page)
+        info.setdefault('page', self.current_page)
+
+        if lineage_id is None:
+            lineage_id = info.pop('lineage_id', None)
+        person = Person(lineage_id=lineage_id, **info)
+        self.individuals[person.uid] = person
+
+        child_index = generate_child_index(person.lineage_id)
+        for family_info in info.get('families', []):
+            family = Family()
+            self.families[family.uid] = family
+            family.parents.append(person)
+            if family_info.get('spouse'):
+                spouse = self.process_person(family_info['spouse'], None)
+                family.parents.append(spouse)
+            for child_info in family_info.get('children', []):
+                lineage_id = child_info.pop('lineage_id', None)
+                lineage_id = lineage_id or next(child_index)
+                child = self.process_person(child_info, lineage_id)
+                family.children.append(child)
+
+        return person
+
+
+outline = yaml.load(open(sys.argv[1]))
+parser = Parser()
+parser.process(outline)
+
+with open('output.ged', 'w') as f:
+    ged = GedcomWriter(f)
+    ged.write_header()
+    for person in parser.individuals.values():
+        logging.debug('processing %s %s %s (pg %s)', person.uid,
+                      person.lineage_id, person.name, person.page_number)
+        ged.write_individual(
+            person,
+            parent_of=(fam_id
+                       for fam_id, family in parser.families.items()
+                       if person in family.parents),
+            child_of=(fam_id
+                      for fam_id, family in parser.families.items()
+                      if person in family.children),
+        )
+
+    for family in parser.families.values():
+        ged.write_family(family)
+
+    ged.write_generated_items()
+    ged.write_item(
+        'S68885317', 'SOUR',
+        titl=('Three Bears Of Earl Township, Lancaster County, '
+              'Pennsylvania, And Other Early Bears'),
+        auth='Jane Evans Best',
+        publ='Pennsylvania Mennonite Heritage',
+        date='Oct 1981',
+        plac='Lancaster, Pennsylvania, United States',
+        refn='Volume IV, Number 4',
+        repo='@R41744368@',
+        obje='@O11574216@',
+    )
+    ged.write_item(
+        'R41744368', 'REPO',
+        name='Dave Shawley',
+        addr='daveshawley@gmail.com',
+    )
+    ged.write_item(
+        'O11574216', 'OBJE',
+        url=('https://www.lmhs.org/research/lmhs-publications'
+             '/pa-mennonite-heritage/'),
+        titl=('Pennsylvania Mennonite Heritage | Lancaster Mennonite '
+              'Historical Society'),
+    )

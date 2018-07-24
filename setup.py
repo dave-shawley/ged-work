@@ -14,7 +14,10 @@ setuptools.setup(
     author_email='daveshawley@gmail.com',
     url='https://github.com/dave-shawley/gedcom',
     packages=['gedcom'],
-    install_requires=['tqdm==4.23.4'],
+    install_requires=[
+        'nameparser==0.5.7',
+        'tqdm==4.23.4',
+    ],
     extras_require={
         'dev': [
             'coverage==4.5.1',
