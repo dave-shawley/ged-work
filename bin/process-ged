@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+#
+
+import json
+import logging
+import sys
+
+import gedcom.api
+import gedcom.models
+import tqdm
+
+
+def get_progress_bar(sequence, logger=None, **kwargs):
+    if logger is not None:
+        kwargs.setdefault(
+            'disable',
+            True if logger.isEnabledFor(logging.DEBUG) else None)
+    kwargs.setdefault('leave', False)
+    return tqdm.tqdm(sequence, **kwargs)
+
+
+def set_source_pages(db):
+    logger = logging.getLogger('ged.set_source_pages')
+    logger.info('setting source page numbers')
+    start_count = db.record_count
+    for record in db.root_records:
+        if record.tag == 'INDI':
+            source = record.find_first_child('SOUR')
+            if source:
+                page = source.find_first_child('PAGE')
+                if page:
+                    for source_ref in record.find_descendants('SOUR'):
+                        if not source_ref.find_first_child('PAGE'):
+                            page_ref = gedcom.models.Record.from_line(
+                                '0 {}'.format(page.line_data))
+                            source_ref.add_child(page_ref)
+    end_count = db.record_count
+    logger.info('added %d page references', end_count - start_count)
+
+
+def remove_duplicate_sources(db):
+    logger = logging.getLogger('ged.foo')
+    source_parents = set()
+    for record in db.root_records:
+        for source_ref in record.find_descendants('SOUR'):
+            parent = source_ref.parent
+            sources = list(parent.gen_children_by_tag('SOUR'))
+            if len(sources) > 1:
+                source_parents.add(parent)
+
+    logger.warning('found %d records with multiple sources',
+                   len(source_parents))
+    unnecessary_sources = []
+    for parent in source_parents:
+        unpaged, paged = [], []
+        source_data = set()
+        sources = list(parent.gen_children_by_tag('SOUR'))
+        for source in sources:
+            source_data.add(source.data)
+            page = source.find_first_child('PAGE')
+            if not page:
+                unpaged.append(source)
+            else:
+                paged.append((source, page.data))
+        if len(sources) > 1:
+            if len(source_data) > 1:
+                logger.info('found multiple source data elements for %r', sources)
+            else:
+                for source in sources:
+                    parent.children.remove(source)
+                if paged:
+                    pages_processed = set()
+                    for source, page_number in paged:
+                        if page_number not in pages_processed:
+                            logger.info('adding paged source %r, page %s', source, page_number)
+                            parent.add_child(source)
+                            pages_processed.add(page_number)
+                else:
+                    logger.warning('adding unpaged source %r', unpaged[0])
+                    parent.add_child(unpaged[0])
+                parent.children[-1].data = next(iter(source_data))
+
+    logger.info('found %d duplicate sources without page numbers',
+                len(unnecessary_sources))
+    for source in unnecessary_sources:
+        parent = source.parent
+        orphans = []
+        for child in parent.children:
+            if child in unnecessary_sources:
+                orphans.append(child)
+        for child in orphans:
+            parent.children.remove(child)
+        sources = list(parent.gen_children_by_tag('SOUR'))
+        if len(sources) == 0:
+            logger.error('accidentilly removed all sources for %s %s',
+                         parent.tag, parent.data)
+
+
+def augment_indi_ids(db):
+    family_id_map = {}
+    logger = logging.getLogger('ged.augment_indi_ids')
+    logger.info('scanning individuals')
+    for record in db.find_records('INDI'):
+        for child in record.gen_children_by_tag('NOTE'):
+            if child.reference:
+                note = db.find_pointer(child.reference)
+                for grandchild in note.children:
+                    if grandchild.tag == 'CONT':
+                        if grandchild.data.startswith('Listed as'):
+                            tokens = grandchild.data.split()
+                            family_id_map[tokens[2]] = record
+                            setattr(record, 'family_id', tokens[2])
+
+    return family_id_map
+
+
+def insert_page_numbers(id_map, page_map):
+    logger = logging.getLogger('ged.insert_page_numbers')
+    pages_inserted = 0
+    for person_id, page_number in page_map.items():
+        try:
+            record = id_map[person_id]
+        except KeyError:
+            logger.error('failed to find %s in pointer map', person_id)
+            continue
+
+        sources = list(record.gen_children_by_tag('SOUR'))
+        logger.debug('found %d sources for %s', len(sources), record.pointer)
+        if len(sources) == 1:
+            if not sources[0].find_first_child('PAGE'):
+                page = gedcom.models.Record.from_line(
+                    '0 PAGE {}'.format(page_number))
+                sources[0].add_child(page)
+                pages_inserted += 1
+    logger.debug('inserted %d page references', pages_inserted)
+
+
+def read_map_file(file_object):
+
+    def calculate_person_id(root, child_no):
+        if child_no == 10:
+            child_no = 0
+        elif child_no > 10:
+            child_no -= 1
+        return '{}{:X}'.format(root, child_no)
+
+    page_map = {}
+    person_stack, current_page = [], None
+    for line in file_object:
+        line = line.replace(' ' * 4, '\t')
+        depth = line.count('\t')
+        line = line.strip()
+        if depth == 0:
+            parent_id, current_page = line.split()
+            person_stack = [parent_id]
+            current_page = int(current_page)
+            page_map[parent_id] = current_page
+        else:
+            person_stack = person_stack[0:depth]
+            root_id = ''.join(person_stack)
+            if '-' in line:
+                lower, upper = line.split('-')
+                for child_no in range(int(lower), int(upper) + 1):
+                    person_id = calculate_person_id(root_id, child_no)
+                    page_map[person_id] = current_page
+                person_stack.append(str(upper))
+            else:
+                person_id = calculate_person_id(root_id, int(line))
+                page_map[person_id] = current_page
+                person_stack.append(line)
+
+    return page_map
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO,
+                        format='%(levelname)1.1s %(name)s: %(message)s')
+    logger = logging.getLogger('ged')
+    with open(sys.argv[1], 'rb') as f:
+        logger.info('parsing %s', f.name)
+        db = gedcom.api.parse(f)
+
+    logger.info('database contains %d records', db.record_count)
+
+    set_source_pages(db)
+
+    family_id_map = augment_indi_ids(db)
+    logger.info('found %d family ids', len(family_id_map))
+
+    remove_duplicate_sources(db)
+
+    # page_map = read_map_file(open('person-map.txt'))
+    # insert_page_numbers(family_id_map, page_map)
+
+    if len(sys.argv) > 1:
+        with open(sys.argv[2], 'wb') as f:
+            logger.info('writing %s', f.name)
+            db.write(f)
