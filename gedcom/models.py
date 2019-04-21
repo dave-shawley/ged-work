@@ -63,7 +63,7 @@ class Record(object):
             parts.append(self.data)
         if self.reference:
             parts.append(self.reference)
-        return ' '.join(parts)
+        return ' '.join(parts).strip()
 
     @property
     def node_count(self):
